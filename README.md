@@ -6,44 +6,58 @@ render timing). Raw tool output is in `audit-data/`.
 
 ## In plain terms
 
-Your website works, but on a phone it takes **about 20-40 seconds** to fully load —
-most visitors on mobile data will give up before that finishes. The cause isn't your
-content, your images, or your hosting: it's that the page loads 8 third-party scripts
-(Facebook, Google, a cookie-consent banner, a visitor-tracking tool) one after another
-instead of all at once, like cars taking turns through a single-lane tollbooth instead
-of using all the lanes. On a fast connection you don't notice it; on mobile data you do.
+Your website works, but on a phone — or anything less than a fast connection — it can take
+**20 to 70+ seconds** to finish loading, because the homepage silently loads a **43MB
+autoplaying background video**. That's roughly the size of 10,000 regular web pages, for
+one looping background clip. Most visitors on mobile data will give up before it finishes.
 
-The good news: this is a **configuration fix, not a rebuild**. Whoever maintains the
-site's code (see "who can fix this" below) needs to add one word (`defer`) to those
-8 script tags. That's it — no redesign, no new pages, no lost content. Everything else
-in this document (a few missing image descriptions, a disabled pinch-to-zoom setting,
-a couple of SEO files) is smaller and optional, listed below for completeness.
+The cause isn't your text, your layout, or your hosting — it's one oversized file. Checked
+directly against the server: that 43MB video is recorded at a quality level (1080p, 60
+frames/second) that's complete overkill for a muted background loop nobody watches
+frame-by-frame. I compressed the exact same clip to the kind of setting background videos
+normally use (720p, 30fps) and it came out to **6.6MB — 84% smaller**, with no visible
+quality loss for its actual use. I verified that size reduction actually cuts load time by
+roughly the same proportion by timing partial downloads directly against the real server
+(details below) — this isn't a guess.
 
-**Who can fix this:** the page's own code names `Sixnet` as its author, and one of the
-slow-loading scripts is literally called `sixnet-footer.frontend.js`. That suggests the
-site runs on a platform or was built by an agency called Sixnet, not something editable
-in a simple page-builder. Worth checking who actually has file/CMS access before
-promising a timeline.
+**This is a one-file swap, not a rebuild.** Whoever has access to the site's media files
+re-encodes that one video and re-uploads it. No redesign, no lost content, nothing else on
+the page needs to change. Everything else in this document (a few missing image
+descriptions, a disabled pinch-to-zoom setting, some oversized photos, a couple of SEO
+files) is smaller and optional, listed below for completeness.
+
+**Who can fix this:** the page's own code names `Sixnet` as its author, and one of its
+scripts is literally called `sixnet-footer.frontend.js`. That suggests the site runs on a
+platform built by an agency called Sixnet, not something editable from a simple
+page-builder. Worth checking who actually has file/CMS access before promising a timeline.
 
 ## Methodology (for anyone who wants to verify this independently)
 
-- **Tools:** Google Lighthouse 13.6.0 (CLI, both mobile and desktop presets, default
-  throttling) and axe-core 4.10.2 (run directly in a live Chrome session against the
-  rendered page). Both are the same open-source tools used industry-wide; nothing custom
-  or proprietary. Versions, raw scores, and every individual finding are in `audit-data/`,
-  unedited — re-run the same commands against the live site and you'll get the same
-  numbers.
+- **Tools:** Google Lighthouse 13.6.0 (CLI, mobile + desktop presets, default throttling),
+  axe-core 4.10.2 (run live in Chrome against the rendered page), and direct `curl`/`ffprobe`
+  checks against the real server (response headers, file sizes, codec/bitrate, range-request
+  timing). All open-source/standard tools, nothing custom. Raw output is in `audit-data/` —
+  re-run the same commands and you'll get the same numbers.
+- **Self-correction, in the interest of being accurate rather than first:** an earlier pass
+  of this audit identified 8 "render-blocking scripts" as the main culprit, based on a
+  JavaScript query that (bug on my part) counted scripts anywhere in the document, not just
+  `<head>`. Rechecking the actual HTML showed those scripts sit at the bottom of `<body>`
+  (correct placement) and GTM already loads itself `async` — that finding was wrong, and
+  real-browser testing pointed to the video instead. I'm leaving this note in rather than
+  quietly fixing it, since the whole point of linking raw data is to let you catch things
+  like this too.
 - **Access:** read-only. No login, no account, no write requests — the same requests any
-  visitor's browser makes, plus a `curl` check of HTTP response headers.
-- **Date:** 2026-11-08, so note the DOM/CSS/script versions if re-checking later — the
-  site may have changed.
+  visitor's browser makes, plus HTTP header/range-request checks (standard things any
+  browser or CDN does, nothing adversarial).
+- **Date:** 2026-11-08 — note the file versions if re-checking later, the site may have
+  changed.
 
 ## TL;DR
 
-The site is **fine on desktop, bad on mobile/slow connections** — and it's one root cause,
-not ten unrelated problems: too many third-party tracking scripts loaded the wrong way in
-`<head>`. Fixing that one thing should fix most of the performance score. Everything else
-below is smaller and optional.
+The site is **fine on desktop, bad on mobile/slow connections** — and it's effectively one
+root cause: a massively oversized autoplay video, not a pile of unrelated problems.
+Fixing that one file should fix most of the performance score. Everything else below is
+smaller and optional.
 
 | Area | Desktop | Mobile |
 |---|---|---|
@@ -59,30 +73,63 @@ below is smaller and optional.
 | Time to Interactive | 2.5s | **39.2s** |
 | Total Blocking Time | 10ms | 660ms |
 
-## Finding #1 — Render-blocking third-party scripts (the big one)
+Lighthouse's own payload audit independently flagged **11.6MB total transferred** on this
+page and named several multi-megabyte images as top offenders — consistent with "this page
+ships way too many raw bytes," even where it didn't capture the video itself (see note in
+Finding #1).
 
-**Severity: High. This is almost certainly what you felt as "slow."**
+## Finding #1 — A 43MB autoplaying background video (the big one)
 
-There are **8 blocking `<script>` tags in `<head>`** (no `async`/`defer`), pulling from
-6 different third-party domains: Google Tag Manager, Google Analytics, Facebook Pixel,
-Microsoft Clarity (session recording), CookieYes (cookie banner — 9 requests on its own),
-and Google Fonts. The browser downloads and runs each one in order before it can keep
-parsing the page, so they queue up like a relay race instead of running in parallel.
+**Severity: High. This is what's actually making the site feel slow.**
 
-In a real (non-simulated) browser session, the page took **18 seconds just to reach
-DOMContentLoaded** — and the total page weight is only ~800KB, so it's not a "too much
-data" problem, it's purely this serial script chain. Under Lighthouse's mobile network
-throttle it compounds to a 39-second Time to Interactive.
+The homepage has a `<video autoplay preload muted loop>` background clip. Checked directly
+against the server:
 
-**Fix (cheap, no redesign needed):**
-- Add `defer` to every `<script src="...">` tag in `<head>` that isn't needed before paint.
-- Since Google Tag Manager is already installed, fire Facebook Pixel, Clarity, and GA
-  *through* GTM as tags instead of hardcoding separate `<script>` includes — GTM loads
-  itself async and dispatches the rest without blocking the page.
-- Move the CookieYes banner script to load after first paint (most consent-banner vendors
-  support a deferred/lazy init mode).
+| | Original | What it should be |
+|---|---|---|
+| File size | **42.8 MB** | 6.6 MB (tested) |
+| Resolution / framerate | 1920×1080 @ 60fps | 1280×720 @ 30fps |
+| Bitrate | 7.1 Mbit/s | 1.1 Mbit/s |
 
-## Finding #2 — No cache headers on static assets
+That resolution/framerate/bitrate is what you'd use for footage people actually watch
+closely — not a muted, looping, autoplaying background element. Nobody can perceive 60fps
+or 1080p detail in a blurred-motion background loop.
+
+**How I confirmed this is the actual bottleneck, not a guess:**
+- Direct download of the live file took 37-73 seconds across two separate measurements
+  (this connection's throughput itself varied between ~588KB/s and ~1.16MB/s between runs —
+  worth knowing, it's noisy). All other individual assets on the site (JS, CSS, icons)
+  loaded in under 1 second each via the same checks, ruling out a general server problem.
+- I re-encoded the actual video (same codec, H.264, just resized/re-bitrated) to 6.6MB —
+  an 84% size cut — using `ffmpeg`, and confirmed visually it's still fine for a background
+  loop.
+- To prove size is really what drives the time (not something else I'm not seeing), I used
+  an HTTP range request to ask the real server for only the first 6.6MB of the original
+  file — i.e., "how long would an optimized-size file take on this exact server, right
+  now." It came back in **6.66 seconds**, matching the ~85% proportional time cut you'd
+  expect from an 85% size cut, independent of which exact bandwidth number that moment's
+  connection happened to give. That's as close to testing the real fix as you can get
+  without write access to the server.
+- Lighthouse's own lab run didn't count the video in its "total byte weight" list — that
+  audit only counts fully-completed transfers within its test window, and a 42MB file at
+  this server's throughput often doesn't finish before Lighthouse stops measuring. That's
+  not a contradiction, it's the same problem showing up as a timeout instead of a byte
+  count.
+
+**Fix:** re-encode the hero video at a sane bitrate/resolution for a background loop
+(roughly what's in the "should be" column above) and re-upload it. One file, no redesign.
+
+## Finding #2 — Several oversized images (Lighthouse-confirmed)
+
+**Severity: Medium.** Independent of the video, Lighthouse's own payload audit flags a
+handful of package/promo images at 2.6-3.5MB **each** as raw PNGs (`web-_titulky.png`,
+`vianoce_v_tatrach.png`, `silvester_v_tatrach.png`), while other images on the same page
+are already served as WebP at a fraction of the size. Converting these specific files to
+WebP/compressed JPEG (same approach already used elsewhere on the site) would save
+roughly 8-10MB of page weight — see `cache-insight` / `image-delivery-insight` in
+`audit-data/lighthouse-mobile.json` for the exact file list.
+
+## Finding #3 — No cache headers on static assets
 
 **Severity: Medium.** CSS/JS/image files have an `ETag` but no `Cache-Control` or
 `Expires` header at all. That means every single page view re-validates every asset with
@@ -91,7 +138,7 @@ is already version-stamped in the URL (`app.css?v=202604231214`), so those speci
 could safely get a far-future, immutable cache header right now with zero risk of serving
 stale content.
 
-## Finding #3 — Accessibility (axe-core: 10 violations, 2 critical)
+## Finding #4 — Accessibility (axe-core: 10 violations, 2 critical)
 
 Full detail in `audit-data/axe.json`. Headline items:
 
@@ -108,7 +155,7 @@ Full detail in `audit-data/axe.json`. Headline items:
 - **Moderate** — heading levels skip a level in places, no single `<h1>`, and a couple of
   regions aren't contained in a landmark.
 
-## Finding #4 — SEO basics
+## Finding #5 — SEO basics
 
 - `robots.txt` and `sitemap.xml` both resolve — but return the homepage **HTML**, not an
   actual robots file or XML sitemap (the site's router catches unmatched paths and serves
@@ -117,21 +164,22 @@ Full detail in `audit-data/axe.json`. Headline items:
   (and the sitemap doesn't actually tell Google about the room/apartment subpages).
 - Otherwise SEO basics (titles, meta description, mobile-friendly tag) are present.
 
-## Finding #5 — JS/CSS bloat
+## Finding #6 — JS/CSS bloat
 
 Lighthouse estimates **~479KB of unused JavaScript** and **~61KB of unused CSS** being
 shipped on every load (library code for features not used on that page — likely leftover
-jQuery plugins / Bootstrap components). Not urgent, but worth trimming once the
-render-blocking fix is in, since it adds to the same download queue.
+jQuery plugins / Bootstrap components). Minor next to the video/images above, but still
+worth trimming eventually since it adds to the same download queue.
 
 ## What to actually do, in order
 
-1. `defer` the 8 blocking scripts / consolidate trackers into GTM. **This is the fix that matters.**
-2. Fix `user-scalable=0` in the viewport meta tag (one line).
-3. Add `alt` text to the 10 flagged images.
-4. Add real `robots.txt` / `sitemap.xml` files.
-5. Add `Cache-Control` headers to static assets.
-6. (Later, optional) trim unused JS/CSS.
+1. Re-encode the 43MB hero video down to something like 720p/30fps/~1Mbit/s. **This is the fix that matters.**
+2. Convert the 3 oversized package PNGs (2.6-3.5MB each) to WebP, same as other images on the site already are.
+3. Fix `user-scalable=0` in the viewport meta tag (one line).
+4. Add `alt` text to the 10 flagged images.
+5. Add real `robots.txt` / `sitemap.xml` files.
+6. Add `Cache-Control` headers to static assets.
+7. (Later, optional) trim unused JS/CSS.
 
 ## Raw data
 
