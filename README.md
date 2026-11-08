@@ -181,6 +181,35 @@ worth trimming eventually since it adds to the same download queue.
 6. Add `Cache-Control` headers to static assets.
 7. (Later, optional) trim unused JS/CSS.
 
+## Further optimization (beyond "just swap the file") — not yet tested
+
+If you want the page to feel fast even on a bad connection, not just "faster than before,"
+the file swap above isn't the ceiling. These are reasonable next steps but, unlike
+everything above, **I haven't verified them against the live server** — they're the
+natural next moves, not confirmed results, flagged here so a future session (me or anyone
+else) doesn't have to re-derive them from scratch:
+
+1. **Decouple the video from page load entirely** — set `preload="none"` on the `<video>`
+   tag and only call `.load()`/`.play()` on it after the `window.load` event (or even after
+   a short delay / on-scroll). This is bigger leverage than file size alone: it means
+   "page load" as experienced by the visitor (and as Lighthouse scores it) doesn't depend
+   on the video at all, regardless of how big it ends up being or how bad the connection
+   is. I actually built and ran a version of this exact change locally earlier in this
+   session (serving a modified copy of the real HTML) but hit a cross-origin confound in
+   the test setup (Resource Timing API gets redacted when the test page's origin differs
+   from the asset origin — `transferSize: 0` on everything, identical bogus durations) that
+   made the in-browser numbers untrustworthy, so I fell back to the server-side range-request
+   test instead for the verified claims above. A clean test of *this specific* change would
+   need to run from the real `amresort.sk` origin (e.g. a userscript/devtools override on
+   the live page, or a true A/B deploy), not a separate local server.
+2. **Skip the video on mobile** — serve just the poster image below some viewport-width or
+   `navigator.connection` threshold. Most visitors on mobile data won't miss a background
+   loop, and it removes the problem entirely for the segment where it hurts most.
+3. **Compress the 3 oversized PNGs** (Finding #2) — pure byte removal, no behavior change,
+   smaller lift than the video.
+4. **Add `Cache-Control` headers** (Finding #3) — doesn't help first-time load, but means
+   none of this costs anything again on a repeat visit.
+
 ## Raw data
 
 - `audit-data/lighthouse-mobile.json` / `lighthouse-desktop.json` — full Lighthouse runs
