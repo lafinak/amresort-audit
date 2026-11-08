@@ -185,6 +185,9 @@ worth trimming eventually since it adds to the same download queue.
 
 - `audit-data/lighthouse-mobile.json` / `lighthouse-desktop.json` — full Lighthouse runs
 - `audit-data/axe.json` — full axe-core accessibility scan (10 violations, 42 passes)
+- `audit-data/hero-video-optimized-example.mp4` — the actual re-encoded hero video (6.6MB,
+  720p/30fps, same clip, same codec). Not a mockup — whoever maintains the site can take
+  this file as-is, or re-encode fresh from the original at a similar setting.
 
 Tested 2026-11-08 against the live site, no login/account access, nothing destructive —
 just read-only requests and a Lighthouse run like any visitor's browser would make.
