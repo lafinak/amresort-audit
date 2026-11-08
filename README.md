@@ -4,6 +4,40 @@ Informal audit, not a client deliverable. Ran Lighthouse (mobile + desktop) and 
 against the live site on 2026-11-08, plus some manual checks (headers, robots.txt,
 render timing). Raw tool output is in `audit-data/`.
 
+## In plain terms
+
+Your website works, but on a phone it takes **about 20-40 seconds** to fully load —
+most visitors on mobile data will give up before that finishes. The cause isn't your
+content, your images, or your hosting: it's that the page loads 8 third-party scripts
+(Facebook, Google, a cookie-consent banner, a visitor-tracking tool) one after another
+instead of all at once, like cars taking turns through a single-lane tollbooth instead
+of using all the lanes. On a fast connection you don't notice it; on mobile data you do.
+
+The good news: this is a **configuration fix, not a rebuild**. Whoever maintains the
+site's code (see "who can fix this" below) needs to add one word (`defer`) to those
+8 script tags. That's it — no redesign, no new pages, no lost content. Everything else
+in this document (a few missing image descriptions, a disabled pinch-to-zoom setting,
+a couple of SEO files) is smaller and optional, listed below for completeness.
+
+**Who can fix this:** the page's own code names `Sixnet` as its author, and one of the
+slow-loading scripts is literally called `sixnet-footer.frontend.js`. That suggests the
+site runs on a platform or was built by an agency called Sixnet, not something editable
+in a simple page-builder. Worth checking who actually has file/CMS access before
+promising a timeline.
+
+## Methodology (for anyone who wants to verify this independently)
+
+- **Tools:** Google Lighthouse 13.6.0 (CLI, both mobile and desktop presets, default
+  throttling) and axe-core 4.10.2 (run directly in a live Chrome session against the
+  rendered page). Both are the same open-source tools used industry-wide; nothing custom
+  or proprietary. Versions, raw scores, and every individual finding are in `audit-data/`,
+  unedited — re-run the same commands against the live site and you'll get the same
+  numbers.
+- **Access:** read-only. No login, no account, no write requests — the same requests any
+  visitor's browser makes, plus a `curl` check of HTTP response headers.
+- **Date:** 2026-11-08, so note the DOM/CSS/script versions if re-checking later — the
+  site may have changed.
+
 ## TL;DR
 
 The site is **fine on desktop, bad on mobile/slow connections** — and it's one root cause,
